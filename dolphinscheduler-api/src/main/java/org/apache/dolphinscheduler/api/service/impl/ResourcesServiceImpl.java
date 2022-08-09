@@ -17,8 +17,6 @@
 
 package org.apache.dolphinscheduler.api.service.impl;
 
-import static org.apache.dolphinscheduler.common.Constants.ALIAS;
-import static org.apache.dolphinscheduler.common.Constants.CONTENT;
 import static org.apache.dolphinscheduler.common.Constants.EMPTY_STRING;
 import static org.apache.dolphinscheduler.common.Constants.FOLDER_SEPARATOR;
 import static org.apache.dolphinscheduler.common.Constants.FORMAT_SS;
@@ -28,6 +26,7 @@ import static org.apache.dolphinscheduler.common.Constants.PERIOD;
 
 import org.apache.dolphinscheduler.api.constants.ApiFuncIdentificationConstant;
 import org.apache.dolphinscheduler.api.dto.resources.ResourceComponent;
+import org.apache.dolphinscheduler.api.dto.resources.ResourceContent;
 import org.apache.dolphinscheduler.api.dto.resources.filter.ResourceFilter;
 import org.apache.dolphinscheduler.api.dto.resources.visitor.ResourceTreeVisitor;
 import org.apache.dolphinscheduler.api.dto.resources.visitor.Visitor;
@@ -59,7 +58,6 @@ import org.apache.dolphinscheduler.dao.mapper.UserMapper;
 import org.apache.dolphinscheduler.dao.utils.ResourceProcessDefinitionUtils;
 import org.apache.dolphinscheduler.spi.enums.ResourceType;
 
-import org.apache.commons.beanutils.BeanMap;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
@@ -123,7 +121,6 @@ public class ResourcesServiceImpl extends BaseServiceImpl implements ResourcesSe
     @Autowired(required = false)
     private StorageOperate storageOperate;
 
-
     /**
      * create directory
      *
@@ -185,13 +182,7 @@ public class ResourcesServiceImpl extends BaseServiceImpl implements ResourcesSe
             resourcesMapper.insert(resource);
             putMsg(result, Status.SUCCESS);
             permissionPostHandle(resource.getType(), loginUser, resource.getId());
-            Map<String, Object> resultMap = new HashMap<>();
-            for (Map.Entry<Object, Object> entry : new BeanMap(resource).entrySet()) {
-                if (!"class".equalsIgnoreCase(entry.getKey().toString())) {
-                    resultMap.put(entry.getKey().toString(), entry.getValue());
-                }
-            }
-            result.setData(resultMap);
+            result.setData(resource);
         } catch (DuplicateKeyException e) {
             logger.error("resource directory {} has exist, can't recreate", fullName);
             putMsg(result, Status.RESOURCE_EXIST);
@@ -283,13 +274,7 @@ public class ResourcesServiceImpl extends BaseServiceImpl implements ResourcesSe
             updateParentResourceSize(resource, resource.getSize());
             putMsg(result, Status.SUCCESS);
             permissionPostHandle(resource.getType(), loginUser, resource.getId());
-            Map<String, Object> resultMap = new HashMap<>();
-            for (Map.Entry<Object, Object> entry : new BeanMap(resource).entrySet()) {
-                if (!"class".equalsIgnoreCase(entry.getKey().toString())) {
-                    resultMap.put(entry.getKey().toString(), entry.getValue());
-                }
-            }
-            result.setData(resultMap);
+            result.setData(resource);
         } catch (Exception e) {
             logger.error("resource already exists, can't recreate ", e);
             throw new ServiceException("resource already exists, can't recreate");
@@ -519,12 +504,7 @@ public class ResourcesServiceImpl extends BaseServiceImpl implements ResourcesSe
 
             putMsg(result, Status.SUCCESS);
             Map<String, Object> resultMap = new HashMap<>();
-            for (Map.Entry<Object, Object> entry : new BeanMap(resource).entrySet()) {
-                if (!Constants.CLASS.equalsIgnoreCase(entry.getKey().toString())) {
-                    resultMap.put(entry.getKey().toString(), entry.getValue());
-                }
-            }
-            result.setData(resultMap);
+            result.setData(resource);
         } catch (Exception e) {
             logger.error(Status.UPDATE_RESOURCE_ERROR.getMsg(), e);
             throw new ServiceException(Status.UPDATE_RESOURCE_ERROR);
@@ -1048,10 +1028,11 @@ public class ResourcesServiceImpl extends BaseServiceImpl implements ResourcesSe
                 List<String> content = storageOperate.vimFile(tenantCode, resourceFileName, skipLineNum, limit);
 
                 putMsg(result, Status.SUCCESS);
-                Map<String, Object> map = new HashMap<>();
-                map.put(ALIAS, resource.getAlias());
-                map.put(CONTENT, String.join("\n", content));
-                result.setData(map);
+                ResourceContent resourceContent = new ResourceContent();
+                resourceContent.setAlias(resource.getAlias());
+                resourceContent.setContent(String.join("\n", content));
+                resourceContent.setFileName(resource.getFileName());
+                result.setData(resourceContent);
             } else {
                 logger.error("read file {} not exist in storage", resourceFileName);
                 putMsg(result, Status.RESOURCE_FILE_NOT_EXIST, resourceFileName);
@@ -1129,13 +1110,7 @@ public class ResourcesServiceImpl extends BaseServiceImpl implements ResourcesSe
 
         putMsg(result, Status.SUCCESS);
         permissionPostHandle(resource.getType(), loginUser, resource.getId());
-        Map<String, Object> resultMap = new HashMap<>();
-        for (Map.Entry<Object, Object> entry : new BeanMap(resource).entrySet()) {
-            if (!Constants.CLASS.equalsIgnoreCase(entry.getKey().toString())) {
-                resultMap.put(entry.getKey().toString(), entry.getValue());
-            }
-        }
-        result.setData(resultMap);
+        result.setData(resource);
 
         String tenantCode = tenantMapper.queryById(loginUser.getTenantId()).getTenantCode();
 
@@ -1164,13 +1139,7 @@ public class ResourcesServiceImpl extends BaseServiceImpl implements ResourcesSe
             Result<Object> result = this.updateResourceContent(loginUser, resource.getId(), content);
             if (result.getCode() == Status.SUCCESS.getCode()) {
                 resource.setDescription(desc);
-                Map<String, Object> resultMap = new HashMap<>();
-                for (Map.Entry<Object, Object> entry : new BeanMap(resource).entrySet()) {
-                    if (!Constants.CLASS.equalsIgnoreCase(entry.getKey().toString())) {
-                        resultMap.put(entry.getKey().toString(), entry.getValue());
-                    }
-                }
-                result.setData(resultMap);
+                result.setData(resource);
             }
             return result;
         } else {
@@ -1208,8 +1177,8 @@ public class ResourcesServiceImpl extends BaseServiceImpl implements ResourcesSe
         Result<Object> createResult = onlineCreateOrUpdateResourceWithDir(
                 user, fullName, description, resourceContent);
         if (createResult.getCode() == Status.SUCCESS.getCode()) {
-            Map<String, Object> resultMap = (Map<String, Object>) createResult.getData();
-            return (int) resultMap.get("id");
+            Resource resource = (Resource) createResult.getData();
+            return resource.getId();
         }
         String msg = String.format("Can not create or update resource : %s", fullName);
         logger.error(msg);
@@ -1226,8 +1195,8 @@ public class ResourcesServiceImpl extends BaseServiceImpl implements ResourcesSe
             Result<Object> createDirResult = this.createDirectory(
                     user, dirName, EMPTY_STRING, ResourceType.FILE, pid, currentDir);
             if (createDirResult.getCode() == Status.SUCCESS.getCode()) {
-                Map<String, Object> resultMap = (Map<String, Object>) createDirResult.getData();
-                return (int) resultMap.get("id");
+                Resource resource = (Resource) createDirResult.getData();
+                return resource.getId();
             } else {
                 String msg = String.format("Can not create dir %s", dirFullName);
                 logger.error(msg);
